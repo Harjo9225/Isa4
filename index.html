@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#3a7bd5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>PAC Monitor - AI Enhanced</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+  <style>
+    :root {
+      --primary: #3a7bd5; --secondary: #00d2ff; --accent: #00bcd4;
+      --light: #fff; --dark: #222; --surface: #f4f8fb;
+      --sidebar-width: 260px; --nav-height: 60px; --radius: 12px;
+      --error:#ff6b6b; --success:#4caf50;
+    }
+    body { font-family: 'Segoe UI', Arial, sans-serif; margin:0; background: var(--surface); color: var(--dark);}
+    .sidebar { position:fixed; left:-100%; width:var(--sidebar-width); background:var(--light); height:100vh; top:0; z-index:1000; box-shadow:0 4px 16px rgba(58,123,213,0.09); transition:left 0.3s; overflow-y:auto;}
+    .sidebar.active { left:0; }
+    .sidebar-header { font-size:1.1em; font-weight:bold; margin:1em 0 .5em 0; display:flex;justify-content:space-between; align-items:center;}
+    .close-sidebar { border:none;background:transparent;font-size:1.2em;cursor:pointer;}
+    .tools-section { margin-bottom: 1.2em; }
+    .tools-section h4 { margin:.4em 0 .3em 0; font-weight:600; }
+    .tool-button { width:100%;margin-bottom:.4em;border:none;background:var(--surface); padding: .7em 1em; border-radius:var(--radius); cursor:pointer; text-align:left;}
+    .tool-button:focus { outline:2px solid var(--primary);}
+    .app-container { margin: 0 auto; padding:1em; max-width:900px;}
+    .screen { display:none;}
+    .screen.active { display:block;}
+    .screen-header { display:flex;justify-content:space-between;align-items:center; margin-bottom:1em;}
+    .menu-button { background:none;border:none; font-size:1.7em;cursor:pointer;}
+    .ai-panel { border-radius:var(--radius); box-shadow:0 2px 8px rgba(58,123,213,0.06); background: linear-gradient(90deg, var(--primary), var(--secondary)); color: #fff; padding:1em;}
+    .ai-content { display:flex;gap:1em; flex-wrap:wrap;}
+    .ai-insight{flex:1 1 250px; background:rgba(0,0,0,.08); border-radius:var(--radius);padding:1em;margin-bottom:1em;}
+    .market-grid{display:flex;gap:1.5em;flex-wrap:wrap;}
+    .market-card{background:var(--light); border-radius:var(--radius); box-shadow:0 1px 5px rgba(58,123,213,0.04); padding:1em; flex:1 1 250px; margin-bottom:1em;}
+    .ai-alert{background:rgba(255,235,59,0.16);border-left:5px solid #ff9800;margin-bottom:.7em;padding:.6em;border-radius:6px; color:var(--dark);}
+    .market-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.4em;}
+    .market-value{font-size:1.2em; font-weight:700;}
+    .market-change.positive{color:var(--success);}
+    .market-change.negative{color:var(--error);}
+    .portfolio-summary{background:linear-gradient(90deg,var(--primary),var(--accent)); color:#fff; border-radius:var(--radius);box-shadow:0 2px 8px rgba(58,123,213,0.07); padding:1em;}
+    .stat-card{background:rgba(255,255,255,0.15); border-radius:var(--radius); padding:.6em;margin-bottom:.2em;text-align:center;}
+    .asset-list{margin-top:1.1em;}
+    .asset-item{display:flex;justify-content:space-between;align-items:center;padding:.7em 0;border-bottom:1px solid #e0e0e0;}
+    .asset-meta{font-size:.85em;color:#666;}
+    .tools-container{display:flex;gap:1em;flex-wrap:wrap;}
+    .tool-card{background:var(--surface); border-radius:var(--radius); flex:1 1 130px; padding:1em;text-align:center; box-shadow:0 1px 5px rgba(58,123,213,0.05);}
+    .tool-icon{font-size:1.5em; color:var(--primary); margin-bottom:.3em;}
+    .nav-bar{position:fixed;bottom:0;left:0;width:100%;height:var(--nav-height);background:var(--light);display:flex;justify-content:space-around;align-items:center;border-top:1px solid #e0e0e0;z-index:1001;}
+    .nav-item{flex:1;text-align:center; padding:.3em 0;color:#888;}
+    .nav-item.active{color:var(--primary);border-top:2px solid var(--primary);font-weight:bold;}
+    .loader{position:fixed;top:0;left:0;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.6);z-index:1300;}
+    .loader::after { content:""; width:38px; height:38px; border:4px solid var(--primary); border-bottom-color:transparent; border-radius:50%; display: block; animation: spin 1s linear infinite;}
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width:700px){.market-grid,.tools-container,.ai-content{flex-direction:column;gap:1em;}.sidebar{width:90vw;}}
+  </style>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar" aria-label="Menu strumenti"></aside>
+  <main class="app-container" id="appContainer"></main>
+  <nav class="nav-bar" id="navbar" aria-label="Navigazione principale"></nav>
+  <div id="loader" class="loader" aria-hidden="true" hidden></div>
+  <script>
+    // --- DATA MODULE-LIKE ---
+    function getMarketData() {
+      function rnd(min,max) { return (Math.random()*(max-min)+min);}
+      return {
+        trend: { desc: "I mercati globali mostrano un trend rialzista (+1.8% mensile). Tech +5.2% traina il rally." },
+        currency: { desc: "EUR/USD in flessione dello 0.4% settimanale per tensioni geopolitiche. Attenzione volatilità." },
+        suggested: { desc: "ETF energie rinnovabili e tech a buon dividendo consigliati per diversificare." },
+        cards: [
+          {
+            aiAlert: `<i class="fas fa-bell"></i> Potenziale rialzo 3% in 2 settimane`,
+            icon: 'fa-globe-europe', title: 'Indici Globali',
+            change: rnd(0.5,2.4), value: '4,851.23', info: 'MSCI World Index'
+          },
+          {
+            aiAlert: `<i class="fas fa-bell"></i> Volatilità su materie prime segnalata`,
+            icon: 'fa-coins', title: 'Materie Prime',
+            change: rnd(-1.4,0.8), value: '1,225.44', info: 'Bloomberg Commodity Index'
+          }
+        ]
+      };
+    }
+    function getPortfolioData() {
+      return {
+        value: '41,500.80',
+        performance: '+9.3%',
+        assetsHeld: 17,
+        assets: [
+          { name: 'MSCI World ETF', meta: 'Etf azionario globale', value: '12,100', change: '+5.1' },
+          { name: 'Green Bond IT', meta: 'Obbligazionario sostenibile', value: '7,980', change: '+2.2' }
+        ]
+      };
+    }
+    function getToolsData() {
+      return [
+        { icon: 'fa-percentage', label: 'Calcolatore Tasse' },
+        { icon: 'fa-chart-line', label: 'Calcolatore Rendimento' },
+        { icon: 'fa-euro-sign', label: 'Calcolatore Valuta' },
+        { icon: 'fa-file-csv', label: 'Importa CSV' },
+        { icon: 'fa-file-csv', label: 'Esporta CSV' }
+      ];
+    }
+    // --- UI MODULE-LIKE ---
+    function renderSidebar() {
+      document.getElementById('sidebar').innerHTML = `
+        <div class="sidebar-header">
+          Strumenti <button class="close-sidebar" aria-label="Chiudi menu laterale">×</button>
+        </div>
+        <div class="tools-section">
+          <h4>Calcolatori</h4>
+          <button class="tool-button">Calcolatore Tasse</button>
+          <button class="tool-button">Calcolatore Rendimento</button>
+          <button class="tool-button">Calcolatore Valuta</button>
+        </div>
+        <div class="tools-section">
+          <h4>Import/Export</h4>
+          <button class="tool-button">Importa CSV</button>
+          <button class="tool-button">Esporta CSV</button>
+        </div>
+        <div class="tools-section">
+          <h4>Assistenza AI</h4>
+          <button class="tool-button">Analisi Portafoglio</button>
+          <button class="tool-button">Previsioni Mercato</button>
+        </div>
+      `;
+    }
+    function renderNavbar() {
+      document.getElementById('navbar').innerHTML = [
+        { icon: 'fa-chart-line', label: 'Mercato', screen: 'market' },
+        { icon: 'fa-wallet', label: 'Portafoglio', screen: 'portfolio' },
+        { icon: 'fa-tools', label: 'Strumenti', screen: 'tools' }
+      ].map((i, idx) => `
+        <a class="nav-item${idx==0?' active':''}" data-screen="${i.screen}" tabindex="0">
+          <i class="fas ${i.icon}"></i><br>${i.label}
+        </a>`).join('');
+    }
+    function renderScreen(screen) {
+      const cont = document.getElementById('appContainer');
+      if (screen === 'market') cont.innerHTML = renderMarket();
+      if (screen === 'portfolio') cont.innerHTML = renderPortfolio();
+      if (screen === 'tools') cont.innerHTML = renderTools();
+    }
+    function renderMarket() {
+      const data = getMarketData();
+      return `
+        <section class="screen active"><div class="screen-header">
+          <h2 class="screen-title"><i class="fas fa-chart-line"></i> Mercato</h2>
+          <button class="menu-button" aria-label="Apri menu laterale">≡</button>
+        </div>
+        <div class="ai-panel">
+          <div class="ai-header"><i class="fas fa-brain"></i> <b>Analisi AI del Mercato</b></div>
+          <div class="ai-content">
+            <div class="ai-insight"><h4><i class="fas fa-lightbulb"></i> Trend Attuale</h4><p>${data.trend.desc}</p></div>
+            <div class="ai-insight"><h4><i class="fas fa-exclamation-triangle"></i> Rischio Valutario</h4><p>${data.currency.desc}</p></div>
+            <div class="ai-insight"><h4><i class="fas fa-chart-pie"></i> Asset Consigliati</h4><p>${data.suggested.desc}</p></div>
+          </div>
+        </div>
+        <div class="market-grid">
+          ${data.cards.map(card => `
+            <div class="market-card">
+              <div class="ai-alert">${card.aiAlert}</div>
+              <div class="market-card-header">
+                <h4><i class="fas ${card.icon}"></i>${card.title}</h4>
+                <span class="market-change ${card.change>=0?'positive':'negative'}">
+                  <i class="fas fa-caret-${card.change>=0?'up':'down'}"></i> ${card.change>0?'+':''}${card.change.toFixed(1)}%
+                </span>
+              </div>
+              <div class="market-value">${card.value}</div>
+              <div class="market-info">${card.info}</div>
+            </div>
+          `).join('')}
+        </div>
+        </section>
+      `;
+    }
+    function renderPortfolio() {
+      const pf = getPortfolioData();
+      return `
+        <section class="screen active"><div class="screen-header">
+          <h2 class="screen-title"><i class="fas fa-wallet"></i> Portafoglio</h2>
+        </div>
+        <div class="portfolio-summary">
+          <div class="portfolio-value">€ ${pf.value}</div>
+          <div class="portfolio-stats">
+            <div class="stat-card"><div class="stat-value">${pf.performance}</div><div class="stat-label">Rendimento YTD</div></div>
+            <div class="stat-card"><div class="stat-value">${pf.assetsHeld}</div><div class="stat-label">Asset detenuti</div></div>
+          </div>
+          <div class="performance-chart">(Grafico andamento - integra Chart.js)</div>
+        </div>
+        <div class="asset-list">
+          ${pf.assets.map(a => `
+            <div class="asset-item">
+              <div>
+                <div class="asset-name">${a.name}</div>
+                <div class="asset-meta">${a.meta}</div>
+              </div>
+              <div>
+                <div class="asset-value">€ ${a.value}</div>
+                <div class="asset-change ${a.change>=0?'positive':'negative'}">${a.change>0?'+':''}${a.change}%</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        </section>
+      `;
+    }
+    function renderTools() {
+      const tools = getToolsData();
+      return `<section class="screen active"><div class="screen-header">
+        <h2 class="screen-title"><i class="fas fa-tools"></i> Strumenti</h2>
+      </div>
+      <div class="tools-container">
+        ${tools.map(tool => `
+          <div class="tool-card">
+            <i class="fas ${tool.icon} tool-icon"></i>
+            <h4>${tool.label}</h4>
+          </div>
+        `).join('')}
+      </div></section>`;
+    }
+    // --- MAIN ENTRYPOINT ---
+    document.addEventListener('DOMContentLoaded', () => {
+      renderSidebar();
+      renderNavbar();
+      renderScreen('market');
+      // Navbar navigation
+      document.getElementById('navbar').onclick = e => {
+        const t = e.target.closest('.nav-item');
+        if (t) {
+          document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+          t.classList.add('active');
+          renderScreen(t.dataset.screen);
+          document.getElementById('sidebar').classList.remove('active');
+        }
+      };
+      // Sidebar open/close
+      document.body.addEventListener('click', e => {
+        if (e.target.matches('.menu-button')) document.getElementById('sidebar').classList.add('active');
+        if (e.target.matches('.close-sidebar')) document.getElementById('sidebar').classList.remove('active');
+      });
+      // Simulazione market refresh
+      setInterval(() => renderScreen('market'), 12000);
+    });
+    // PWA: service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+    }
+  </script>
+  <!-- FontAwesome CDN – solo icone usate -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous"></script>
+</body>
+</html>
